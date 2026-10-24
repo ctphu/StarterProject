@@ -54,7 +54,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
         await DatabaseSeeder.SeedAsync(db, loggerFactory.CreateLogger("TestSeed"));
     }
-
+    
     public new async Task DisposeAsync()
     {
         await _database.DisposeAsync();
