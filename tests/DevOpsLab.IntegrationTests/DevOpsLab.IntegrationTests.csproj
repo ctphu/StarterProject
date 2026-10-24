@@ -21,6 +21,9 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+  <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\DevOpsLab.WebApi\DevOpsLab.WebApi.csproj" />
   </ItemGroup>
   <ItemGroup>

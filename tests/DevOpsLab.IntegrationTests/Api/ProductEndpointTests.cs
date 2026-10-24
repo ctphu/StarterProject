@@ -8,7 +8,7 @@ using Xunit;
 namespace DevOpsLab.IntegrationTests.Api;
 
 [Collection(ApiCollection.Name)]
-public class ProductEndpointTests: IAsyncLifetime
+public class ProductEndpointTests : IAsyncLifetime
 {
     private readonly ApiFactory _factory;
 
