@@ -41,6 +41,7 @@ public class ProductServiceTests
 
         await Assert.ThrowsAsync<NotFoundException>(() => sut.CreateAsync(request));
         Assert.Empty(_products.Items);
+        Assert.Equal(0, _unitOfWork.SaveCount);
     }
 
     [Fact]
@@ -55,6 +56,7 @@ public class ProductServiceTests
 
         Assert.Equal("product.sku.duplicate", exception.Rule);
         Assert.Single(_products.Items);
+        Assert.Equal(0, _unitOfWork.SaveCount);
     }
 
     [Fact]
@@ -99,9 +101,15 @@ public class ProductServiceTests
         var product = Product.Create(_categoryId, "SKU-004", "Test", 10m, 2);
         _products.Seed(product);
 
-        await Assert.ThrowsAsync<BusinessRuleViolationException>(
-            () => sut.ReserveStockAsync(product.Id, new ReserveStockRequest(3)));
+        // await Assert.ThrowsAsync<BusinessRuleViolationException>(
+        //     () => sut.ReserveStockAsync(product.Id, new ReserveStockRequest(3)));
 
+        // Assert.Equal(2, product.StockQuantity);
+        // Assert.Equal(0, _unitOfWork.SaveCount);
+        var exception = await Assert.ThrowsAsync<BusinessRuleViolationException>(
+          () => sut.ReserveStockAsync(product.Id, new ReserveStockRequest(3)));
+
+        Assert.Equal("product.reserve.insufficientStock", exception.Rule);
         Assert.Equal(2, product.StockQuantity);
         Assert.Equal(0, _unitOfWork.SaveCount);
     }
@@ -117,5 +125,146 @@ public class ProductServiceTests
 
         Assert.Equal(120m, response.Price);
         Assert.Equal(1, _unitOfWork.SaveCount);
+    }
+    // ---- CreateAsync ----
+
+    [Fact]
+    public async Task CreateAsync_WhenProductRuleBroken_ThrowsRuleAndDoesNotSave()
+    {
+        var sut = CreateSut();
+        var request = new CreateProductRequest(_categoryId, "SKU-010", "Test product", 0m, 1);
+
+        var exception = await Assert.ThrowsAsync<BusinessRuleViolationException>(() => sut.CreateAsync(request));
+
+        Assert.Equal("product.price.positive", exception.Rule);
+        Assert.Empty(_products.Items);
+        Assert.Equal(0, _unitOfWork.SaveCount);
+    }
+
+    // ---- GetAsync ----
+
+    [Fact]
+    public async Task GetAsync_WithExistingId_ReturnsThatProduct()
+    {
+        var sut = CreateSut();
+        var product = Product.Create(_categoryId, "SKU-011", "Test", 10m, 1);
+        _products.Seed(product);
+
+        var response = await sut.GetAsync(product.Id);
+
+        Assert.Equal("SKU-011", response.Sku);
+    }
+
+    // ---- ChangePriceAsync ----
+
+    [Fact]
+    public async Task ChangePriceAsync_ExactlyFiftyPercentIncrease_SavesOnce()
+    {
+        var sut = CreateSut();
+        var product = Product.Create(_categoryId, "SKU-012", "Test", 100m, 2);
+        _products.Seed(product);
+
+        await sut.ChangePriceAsync(product.Id, new ChangePriceRequest(150m));
+
+        Assert.Equal(150m, product.Price);
+        Assert.Equal(1, _unitOfWork.SaveCount);
+    }
+
+    [Fact]
+    public async Task ChangePriceAsync_OneCentOverMaxIncrease_ThrowsKeepsPriceAndDoesNotSave()
+    {
+        var sut = CreateSut();
+        var product = Product.Create(_categoryId, "SKU-013", "Test", 100m, 2);
+        _products.Seed(product);
+
+        var exception = await Assert.ThrowsAsync<BusinessRuleViolationException>(
+            () => sut.ChangePriceAsync(product.Id, new ChangePriceRequest(150.01m)));
+
+        Assert.Equal("product.price.increaseTooLarge", exception.Rule);
+        Assert.Equal(100m, product.Price);
+        Assert.Equal(0, _unitOfWork.SaveCount);
+    }
+
+    [Fact]
+    public async Task ChangePriceAsync_WithUnknownId_ThrowsNotFoundAndDoesNotSave()
+    {
+        var sut = CreateSut();
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => sut.ChangePriceAsync(Guid.NewGuid(), new ChangePriceRequest(10m)));
+
+        Assert.Equal(0, _unitOfWork.SaveCount);
+    }
+
+    // ---- ReserveStockAsync ----
+
+    [Fact]
+    public async Task ReserveStockAsync_ExactlyAllRemainingStock_SavesOnce()
+    {
+        var sut = CreateSut();
+        var product = Product.Create(_categoryId, "SKU-014", "Test", 10m, 2);
+        _products.Seed(product);
+
+        await sut.ReserveStockAsync(product.Id, new ReserveStockRequest(2));
+
+        Assert.Equal(0, product.StockQuantity);
+        Assert.Equal(1, _unitOfWork.SaveCount);
+    }
+
+    [Fact]
+    public async Task ReserveStockAsync_ZeroUnits_ThrowsKeepsStockAndDoesNotSave()
+    {
+        var sut = CreateSut();
+        var product = Product.Create(_categoryId, "SKU-015", "Test", 10m, 2);
+        _products.Seed(product);
+
+        var exception = await Assert.ThrowsAsync<BusinessRuleViolationException>(
+            () => sut.ReserveStockAsync(product.Id, new ReserveStockRequest(0)));
+
+        Assert.Equal("product.reserve.positive", exception.Rule);
+        Assert.Equal(2, product.StockQuantity);
+        Assert.Equal(0, _unitOfWork.SaveCount);
+    }
+
+    [Fact]
+    public async Task ReserveStockAsync_WithUnknownId_ThrowsNotFoundAndDoesNotSave()
+    {
+        var sut = CreateSut();
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => sut.ReserveStockAsync(Guid.NewGuid(), new ReserveStockRequest(1)));
+
+        Assert.Equal(0, _unitOfWork.SaveCount);
+    }
+
+    // ---- ListAsync paging corrections ----
+
+    [Theory]
+    [InlineData(100, 100)]   // exactly the maximum: unchanged
+    [InlineData(101, 100)]   // one over: clamped
+    [InlineData(1, 1)]       // smallest valid: unchanged
+    [InlineData(0, 20)]      // below 1: default
+    [InlineData(-5, 20)]
+    public async Task ListAsync_CorrectsPageSize(int requested, int expected)
+    {
+        var sut = CreateSut();
+
+        var result = await sut.ListAsync(search: null, page: 1, pageSize: requested);
+
+        Assert.Equal(expected, result.PageSize);
+    }
+
+    [Theory]
+    [InlineData(1, 1)]       // smallest valid: unchanged
+    [InlineData(2, 2)]
+    [InlineData(0, 1)]       // below 1: corrected
+    [InlineData(-3, 1)]
+    public async Task ListAsync_CorrectsPage(int requested, int expected)
+    {
+        var sut = CreateSut();
+
+        var result = await sut.ListAsync(search: null, page: requested, pageSize: 20);
+
+        Assert.Equal(expected, result.Page);
     }
 }
