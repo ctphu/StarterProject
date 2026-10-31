@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash          # you will find out why after the break
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  COVERAGE_THRESHOLD: 75
+  DIFF_COVERAGE_THRESHOLD: 80
+
+jobs:
+  build-and-test:
+    name: build-and-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore DevOpsLab.sln
+
+      - name: Build
+        run: dotnet build DevOpsLab.sln --configuration Release --no-restore
+      
+      - name: Unit tests
+        run: >
+          dotnet test tests/DevOpsLab.UnitTests
+          --configuration Release --no-build
+          --settings coverlet.runsettings
+          --collect:"XPlat Code Coverage"
+          --results-directory TestResults/unit
+          --logger "trx;LogFileName=unit.trx"
+          --logger GitHubActions
+
+      - name: Integration tests (Testcontainers)
+        run: >
+          dotnet test tests/DevOpsLab.IntegrationTests
+          --configuration Release --no-build
+          --settings coverlet.runsettings
+          --collect:"XPlat Code Coverage"
+          --results-directory TestResults/integration
+          --logger "trx;LogFileName=integration.trx"
+          --logger GitHubActions
+
+      - name: Merge coverage reports
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool
+          reportgenerator \
+            -reports:"TestResults/**/coverage.cobertura.xml" \
+            -targetdir:coverage \
+            -reporttypes:"Cobertura;MarkdownSummaryGithub"
+          cat coverage/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Coverage gate
+        run: bash scripts/coverage-gate.sh --from coverage/Cobertura.xml --threshold "$COVERAGE_THRESHOLD"
+
+      - name: Diff coverage gate
+        if: github.event_name == 'pull_request'
+        run: >
+          bash scripts/diff-coverage.sh
+          --from coverage/Cobertura.xml
+          --base "origin/${{ github.base_ref }}"
+          --threshold "$DIFF_COVERAGE_THRESHOLD"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-results-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            TestResults/**/*.trx
+            coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+      
+      # P1 
+      - name: P1                     
+        run: dotnet test
+
+      # P2 
+      - name: P2
+        run: dotnet test | tee test.log
+
+      # P3
+      - name: P3
+        shell: bash
+        run: dotnet test | tee test.log
+      
+      # P4
+      - name: P4
+        continue-on-error: true
+        run: dotnet test
