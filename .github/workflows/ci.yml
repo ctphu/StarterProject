@@ -55,3 +55,13 @@ jobs:
           --results-directory TestResults/unit
           --logger "trx;LogFileName=unit.trx"
           --logger GitHubActions
+
+      - name: Integration tests (Testcontainers)
+        run: >
+          dotnet test tests/DevOpsLab.IntegrationTests
+          --configuration Release --no-build
+          --settings coverlet.runsettings
+          --collect:"XPlat Code Coverage"
+          --results-directory TestResults/integration
+          --logger "trx;LogFileName=integration.trx"
+          --logger GitHubActions
