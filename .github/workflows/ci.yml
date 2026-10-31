@@ -66,7 +66,7 @@ jobs:
           --logger "trx;LogFileName=integration.trx"
           --logger GitHubActions
 
-            - name: Merge coverage reports
+      - name: Merge coverage reports
         run: |
           dotnet tool install --global dotnet-reportgenerator-globaltool
           reportgenerator \
