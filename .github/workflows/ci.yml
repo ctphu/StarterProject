@@ -96,3 +96,21 @@ jobs:
             coverage/
           if-no-files-found: ignore
           retention-days: 14
+      
+      # P1 
+      - name: P1                     
+        run: dotnet test
+
+      # P2 
+      - name: P2
+        run: dotnet test | tee test.log
+
+      # P3
+      - name: P3
+        shell: bash
+        run: dotnet test | tee test.log
+      
+      # P4
+      - name: P4
+        continue-on-error: true
+        run: dotnet test
