@@ -65,3 +65,34 @@ jobs:
           --results-directory TestResults/integration
           --logger "trx;LogFileName=integration.trx"
           --logger GitHubActions
+
+            - name: Merge coverage reports
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool
+          reportgenerator \
+            -reports:"TestResults/**/coverage.cobertura.xml" \
+            -targetdir:coverage \
+            -reporttypes:"Cobertura;MarkdownSummaryGithub"
+          cat coverage/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Coverage gate
+        run: bash scripts/coverage-gate.sh --from coverage/Cobertura.xml --threshold "$COVERAGE_THRESHOLD"
+
+      - name: Diff coverage gate
+        if: github.event_name == 'pull_request'
+        run: >
+          bash scripts/diff-coverage.sh
+          --from coverage/Cobertura.xml
+          --base "origin/${{ github.base_ref }}"
+          --threshold "$DIFF_COVERAGE_THRESHOLD"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-results-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            TestResults/**/*.trx
+            coverage/
+          if-no-files-found: ignore
+          retention-days: 14
