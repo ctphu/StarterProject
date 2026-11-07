@@ -21,10 +21,11 @@ RUN dotnet publish src/DevOpsLab.WebApi/DevOpsLab.WebApi.csproj \
         /p:UseAppHost=false
 
 # --- Stage 2: runtime --------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble-chiseled AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble-chiseled-extra AS runtime
 WORKDIR /app
 
 ENV ASPNETCORE_HTTP_PORTS=8080
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 EXPOSE 8080
 
 COPY --from=build /app/publish .
