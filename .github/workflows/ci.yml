@@ -114,10 +114,4 @@ jobs:
             TestResults/**/*.trx
             coverage/
           if-no-files-found: ignore
-<<<<<<< HEAD
           retention-days: 14
-      
-      
-=======
-          retention-days: 14
->>>>>>> upstream/main
