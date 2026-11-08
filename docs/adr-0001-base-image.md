@@ -17,4 +17,4 @@ Accepted — Session 6
 - What we give up (name the capability, not "slightly harder to debug"):
 - How we diagnose a running container without a shell:
 - How we check the container's health, given that a HEALTHCHECK needs a shell:
-- Readiness recovery time after a database restart (Step 8b): ___ s
+- Readiness recovery time after a database restart (Step 8b): _20__ s

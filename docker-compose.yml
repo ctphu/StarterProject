@@ -38,7 +38,7 @@ services:
       ConnectionStrings__Default: >-
         Server=sqlserver,1433;Database=DevOpsLab;User Id=sa;
         Password=${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env};
-        TrustServerCertificate=True;Encrypt=True
+        TrustServerCertificate=True;Encrypt=True;Connect Timeout=3
     ports:
       - "${API_PORT:-8080}:8080"
     networks:
