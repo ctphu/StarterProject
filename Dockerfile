@@ -26,7 +26,7 @@ RUN dotnet publish src/DevOpsLab.WebApi/DevOpsLab.WebApi.csproj \
 
 # --- Stage 2: runtime --------------------------------------------------------
 # noble-chiseled: Ubuntu 24.04, no shell, no package manager, non-root by default.
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble-chiseled AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble-chiseled-extra AS runtime
 WORKDIR /app
 
 # 8080, not 80: a non-root process cannot bind a port below 1024.
