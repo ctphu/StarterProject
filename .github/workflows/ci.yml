@@ -141,3 +141,37 @@ jobs:
           uses: github/codeql-action/analyze@v4
           with:
             category: "/language:csharp"
+  supply-chain:
+    name: supply-chain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Locate the Trivy cache
+        run: echo "TRIVY_CACHE_DIR=$RUNNER_TEMP/trivy-cache" >> "$GITHUB_ENV"
+
+      - name: Cache the Trivy database
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/trivy-cache
+          key: trivy-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: trivy-${{ runner.os }}-
+
+      - name: Secret scan (repository)
+        run: >
+          bash scripts/trivy.sh fs
+          --scanners secret
+          --secret-config trivy-secret.yaml
+          --skip-dirs .git
+          --exit-code 1
+          .
+
+      - name: Dockerfile misconfiguration
+        run: >
+          bash scripts/trivy.sh config
+          --severity HIGH,CRITICAL
+          --exit-code 1
+          .
