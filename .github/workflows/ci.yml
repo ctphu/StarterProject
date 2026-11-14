@@ -175,3 +175,36 @@ jobs:
           --severity HIGH,CRITICAL
           --exit-code 1
           .
+      - name: Build image
+        id: build
+        run: docker build -t devopslab-api:ci .
+
+      - name: Image runs as non-root
+        run: bash scripts/verify-nonroot.sh devopslab-api:ci
+
+      - name: Image scan (vulnerabilities and secrets)
+        run: >
+          bash scripts/trivy.sh image
+          --scanners vuln,secret
+          --secret-config trivy-secret.yaml
+          --severity HIGH,CRITICAL
+          --ignorefile .trivyignore.yaml
+          --exit-code 1
+          devopslab-api:ci
+
+      - name: SBOM (CycloneDX)
+        if: always() && steps.build.outcome == 'success'
+        run: >
+          bash scripts/trivy.sh image
+          --format cyclonedx
+          --output sbom/devopslab-api.cdx.json
+          devopslab-api:ci
+
+      - name: Upload SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.run_number }}-${{ github.run_attempt }}
+          path: sbom/
+          if-no-files-found: ignore
+          retention-days: 90
