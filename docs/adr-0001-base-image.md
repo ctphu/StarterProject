@@ -41,3 +41,13 @@ uses musl instead of glibc, and ships a shell and curl, which enlarge the attack
 - Readiness took 14.8 s to answer 503 with the database down (default SQL connection
   timeout 15 s), longer than the experiment script's timeout, so we set `Connect Timeout=3`.
 - Readiness recovery time after a database restart (Step 8b): 20 s
+
+## Vulnerability counts (Session 7, 2026-11-14)
+
+| Runtime image | HIGH | CRITICAL | Unfixed among them |
+|---|---:|---:|---:|
+| aspnet:8.0-noble-chiseled-extra (ours) | 0 | 0 | 0 |
+| aspnet:8.0-alpine | 0 | 0 | 0 |
+| aspnet:8.0 (full Debian) | 34 | 1 | 0 |
+
+Does this change the decision? Why / why not: No. Both our chiseled Ubuntu image and Alpine achieve zero high/critical vulnerabilities, but chiseled-extra includes the required ICU support for .NET globalization (preventing culture errors), making it the superior choice over the full Debian image which introduces 35 high/critical vulnerabilities.

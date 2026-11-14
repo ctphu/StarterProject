@@ -1,0 +1,34 @@
+# =============================================================================
+# .trivyignore.yaml — accepted vulnerability exceptions (Session 7)
+#
+# Put this file in the ROOT of the repository. CI passes it with --ignorefile.
+# It is the structured form of `.trivyignore` named in the course syllabus:
+# same purpose, but the reason and the review date are FIELDS, not comments.
+#
+# Rules for every entry:
+#   id          the CVE / GHSA identifier — one entry per vulnerability
+#   paths       where it was found (copy from the Trivy table), so the same CVE
+#               somewhere else is NOT silently ignored too
+#   statement   why it is acceptable TODAY: "no fixed version in the base image
+#               yet" plus why it is not reachable or not exploitable here.
+#               "False positive" without an explanation is not a statement.
+#   expired_at  the review date. After it, Trivy stops ignoring the entry and
+#               the build goes red again. That IS the review. Max 3 months out.
+#
+# Never delete a scanner rule, lower --severity, or add `|| true` to silence a
+# finding. An exception lives here, in a reviewed file, or nowhere.
+# =============================================================================
+
+vulnerabilities: []
+
+# Example — copy it, then fill it in for real:
+#
+# vulnerabilities:
+#   - id: CVE-2025-00000
+#     paths:
+#       - "usr/lib/x86_64-linux-gnu/libexample.so.1"
+#     statement: >-
+#       Status "affected" with no fixed version in mcr.microsoft.com/dotnet/aspnet
+#       8.0-noble-chiseled-extra as of 2026-11-12. The API never loads libexample.
+#       Owner: Team 3. Re-check when the base image is rebuilt.
+#     expired_at: 2027-02-12

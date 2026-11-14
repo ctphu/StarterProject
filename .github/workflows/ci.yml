@@ -63,6 +63,9 @@ jobs:
       - name: Restore
         run: dotnet restore DevOpsLab.sln
 
+      - name: Dependency gate (SCA, transitive included)
+        run: bash scripts/dependency-gate.sh DevOpsLab.sln
+
       - name: Build
         run: dotnet build DevOpsLab.sln --configuration Release --no-restore
       - name: Unit tests
@@ -115,3 +118,94 @@ jobs:
             coverage/
           if-no-files-found: ignore
           retention-days: 14
+  sast:
+      name: sast
+      runs-on: ubuntu-24.04
+      timeout-minutes: 30
+      permissions:
+        contents: read
+        security-events: write        # upload results to the Security tab
+        actions: read
+
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v7
+
+        - name: Initialise CodeQL
+          uses: github/codeql-action/init@v4
+          with:
+            languages: csharp
+            build-mode: none
+
+        - name: Analyse
+          uses: github/codeql-action/analyze@v4
+          with:
+            category: "/language:csharp"
+  supply-chain:
+    name: supply-chain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Locate the Trivy cache
+        run: echo "TRIVY_CACHE_DIR=$RUNNER_TEMP/trivy-cache" >> "$GITHUB_ENV"
+
+      - name: Cache the Trivy database
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/trivy-cache
+          key: trivy-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: trivy-${{ runner.os }}-
+
+      - name: Secret scan (repository)
+        run: >
+          bash scripts/trivy.sh fs
+          --scanners secret
+          --secret-config trivy-secret.yaml
+          --skip-dirs .git
+          --exit-code 1
+          .
+
+      - name: Dockerfile misconfiguration
+        run: >
+          bash scripts/trivy.sh config
+          --severity HIGH,CRITICAL
+          --exit-code 1
+          .
+      - name: Build image
+        id: build
+        run: docker build -t devopslab-api:ci .
+
+      - name: Image runs as non-root
+        run: bash scripts/verify-nonroot.sh devopslab-api:ci
+
+      - name: Image scan (vulnerabilities and secrets)
+        run: >
+          bash scripts/trivy.sh image
+          --scanners vuln,secret
+          --secret-config trivy-secret.yaml
+          --severity HIGH,CRITICAL
+          --ignorefile .trivyignore.yaml
+          --exit-code 1
+          devopslab-api:ci
+
+      - name: SBOM (CycloneDX)
+        if: always() && steps.build.outcome == 'success'
+        run: >
+          mkdir -p sbom &&
+          bash scripts/trivy.sh image
+          --format cyclonedx
+          --output sbom/devopslab-api.cdx.json
+          devopslab-api:ci
+
+      - name: Upload SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.run_number }}-${{ github.run_attempt }}
+          path: sbom/
+          if-no-files-found: ignore
+          retention-days: 90
