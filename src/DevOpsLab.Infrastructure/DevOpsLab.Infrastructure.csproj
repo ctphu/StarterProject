@@ -16,6 +16,16 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
   </ItemGroup>
+  <!--
+    Session 7 - transitive pins. EF Core SqlServer 8.0.10 -> Microsoft.Data.SqlClient 5.1.5
+    pulls packages with published advisories. Remove these lines once the EF Core
+    version you use brings fixed versions itself. Next review: 2027-02.
+  -->
+  <ItemGroup>
+    <PackageReference Include="System.Formats.Asn1" Version="8.0.1" />
+    <PackageReference Include="Azure.Identity" Version="1.11.4" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.61.3" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\DevOpsLab.Application\DevOpsLab.Application.csproj" />
     <ProjectReference Include="..\DevOpsLab.Domain\DevOpsLab.Domain.csproj" />
