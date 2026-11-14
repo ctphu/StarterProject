@@ -5,7 +5,15 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+    <!--
+    Session 7 - transitive pins. EF Core SqlServer 8.0.10 -> Microsoft.Data.SqlClient 5.1.5
+    pulls packages with published advisories. Remove these lines once the EF Core
+    version you use brings fixed versions itself. Next review: 2027-02.
+  -->
   <ItemGroup>
+    <PackageReference Include="System.Formats.Asn1" Version="8.0.1" />
+    <PackageReference Include="Azure.Identity" Version="1.11.4" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.61.3" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.10" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10">
