@@ -7,6 +7,7 @@ using DevOpsLab.WebApi.HealthChecks;
 using DevOpsLab.WebApi.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,7 +48,9 @@ app.MapProductEndpoints();
 app.MapGet("/", () => Results.Ok(new
 {
     service = "DevOpsLab.WebApi",
-    version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.0.0",
+    version = typeof(Program).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+        .InformationalVersion ?? "0.0.0",
     docs = "/swagger",
     liveness = "/healthz/live",
     readiness = "/healthz/ready"
