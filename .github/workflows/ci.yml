@@ -227,9 +227,28 @@ jobs:
           path: release-candidate/
           retention-days: 1
           overwrite: true
+  release:
+    name: release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write               # tags, releases, CHANGELOG commits
+      pull-requests: write          # the release PR
+      issues: write                 # labels on the release PR
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: release-please
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
   publish:
     name: publish
-    needs: [build-and-test, sast, supply-chain]
+    needs: [build-and-test, sast, supply-chain, release]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -266,10 +285,19 @@ jobs:
         id: push
         env:
           IMAGE: ${{ steps.name.outputs.image }}
+          RELEASE_CREATED: ${{ needs.release.outputs.release_created }}
+          VERSION: ${{ needs.release.outputs.version }}
+
         run: |
           sha_tag="sha-${GITHUB_SHA::7}"
           docker tag devopslab-api:ci "$IMAGE:$sha_tag"
           docker push "$IMAGE:$sha_tag"
+          # A release adds a SemVer tag to the SAME image: same digest.
+          if [ "$RELEASE_CREATED" = "true" ]; then
+            docker tag devopslab-api:ci "$IMAGE:$VERSION"
+            docker push "$IMAGE:$VERSION"
+          fi
+
 
           ref="$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$sha_tag")"
           digest="${ref#*@}"
