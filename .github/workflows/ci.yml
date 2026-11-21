@@ -1,24 +1,6 @@
 # ============================================================================
 # Reference solution - Session 8: Registry, Provenance, SemVer, Build Once
 # This is the Session 7 ci.yml, EXTENDED. Still one workflow file.
-#
-# On a pull request (unchanged from Session 7) - three required checks:
-#   build-and-test, sast, supply-chain   (+ the code-scanning check "CodeQL")
-#
-# On a push to main (after a merge) - two more jobs, never required checks:
-#   release   release-please: keeps a release PR open; when that PR is merged,
-#             creates the Git tag vX.Y.Z, the GitHub release and the CHANGELOG
-#   publish   runs only if ALL gates are green. Loads the exact image that
-#             supply-chain built and scanned (Build Once), pushes it to GHCR,
-#             tags it sha-<commit> (and X.Y.Z on a release), and attaches two
-#             attestations: SLSA build provenance and the CycloneDX SBOM.
-#
-# The image is built ONCE, in supply-chain. The bytes that were scanned are
-# the bytes that are pushed - publish never runs `docker build`.
-#
-# Later sessions extend THIS file:
-#   Session 9  - deploy the published digest to Staging, smoke tests
-#   Session 10 - database migrations and the Production approval gate
 # ============================================================================
 name: CI
 
@@ -29,9 +11,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# NO paths-ignore: a skipped required workflow never reports its check.
-
-# Least privilege by default. Only the `sast` job widens it, for itself.
 permissions:
   contents: read
 
@@ -39,7 +18,6 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Explicit bash = `bash --noprofile --norc -eo pipefail {0}` (Session 5).
 defaults:
   run:
     shell: bash
@@ -48,7 +26,7 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-  COVERAGE_THRESHOLD: 75          # agreed in Session 4 - never lowered to fit
+  COVERAGE_THRESHOLD: 75          
   DIFF_COVERAGE_THRESHOLD: 80
 
 jobs:
@@ -62,7 +40,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0            # diff coverage needs the history of main
+          fetch-depth: 0            
 
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v6
@@ -72,9 +50,6 @@ jobs:
       - name: Restore
         run: dotnet restore DevOpsLab.sln
 
-      # Session 7. `dotnet list package --vulnerable` exits 0 even when it finds
-      # something, and without --include-transitive it does not look where most
-      # vulnerabilities live. The script fixes both, and fails closed.
       - name: Dependency gate (SCA, transitive included)
         run: bash scripts/dependency-gate.sh DevOpsLab.sln
 
@@ -137,19 +112,15 @@ jobs:
     name: sast
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    # Job-level permissions REPLACE the workflow-level ones for this job only.
     permissions:
       contents: read
-      security-events: write        # upload results to the Security tab
-      actions: read                 # read workflow metadata (private repositories)
+      security-events: write        
+      actions: read                 
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # build-mode: none - CodeQL reads the C# source without compiling it.
-      # Minutes instead of a full build; slightly less precise. Session 8 may
-      # switch to `manual` if a real finding is missed.
       - name: Initialise CodeQL
         uses: github/codeql-action/init@v4
         with:
@@ -171,11 +142,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # scripts/trivy.sh mounts this folder as Trivy's cache, so the
-      # vulnerability database is downloaded once, not once per scan. It lives
-      # OUTSIDE the checkout, or the repository secret scan would read it.
-      # (The `runner` context is not available in a job-level `env:` block,
-      # hence a step.)
       - name: Locate the Trivy cache
         run: echo "TRIVY_CACHE_DIR=$RUNNER_TEMP/trivy-cache" >> "$GITHUB_ENV"
 
@@ -186,8 +152,6 @@ jobs:
           key: trivy-${{ runner.os }}-${{ github.run_id }}
           restore-keys: trivy-${{ runner.os }}-
 
-      # 1. Secrets in the working tree. Built-in rules (cloud keys, tokens,
-      #    private keys) plus the course rule for connection-string passwords.
       - name: Secret scan (repository)
         run: >
           bash scripts/trivy.sh fs
@@ -197,8 +161,6 @@ jobs:
           --exit-code 1
           .
 
-      # 2. Dockerfile misconfiguration - catches a Dockerfile that runs as root
-      #    (check DS002) before an image even exists.
       - name: Dockerfile misconfiguration
         run: >
           bash scripts/trivy.sh config
@@ -210,14 +172,9 @@ jobs:
         id: build
         run: docker build -t devopslab-api:ci .
 
-      # 3. The image itself - the same proof as Session 6, now enforced by CI.
       - name: Image runs as non-root
         run: bash scripts/verify-nonroot.sh devopslab-api:ci
 
-      # 4. Known vulnerabilities in the OS packages AND the NuGet packages
-      #    inside the image, plus secrets baked into any layer.
-      #    Exceptions only through .trivyignore.yaml - each with a statement and
-      #    an expiry date.
       - name: Image scan (vulnerabilities and secrets)
         run: >
           bash scripts/trivy.sh image
@@ -228,8 +185,6 @@ jobs:
           --exit-code 1
           devopslab-api:ci
 
-      # 5. SBOM - generated whenever the image was built, even if the scan
-      #    above failed: a failing build is exactly when you want the list.
       - name: SBOM (CycloneDX)
         if: always() && steps.build.outcome == 'success'
         run: |
@@ -248,4 +203,121 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
-      
+      - name: Save the scanned image (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p release-candidate
+          docker save devopslab-api:ci | gzip > release-candidate/image.tar.gz
+          cp sbom/devopslab-api.cdx.json release-candidate/
+
+      - name: Upload the release candidate (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: release-candidate/
+          retention-days: 1
+          overwrite: true
+
+  # --------------------------------------------------------------------------
+  release:
+    name: release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write               
+      pull-requests: write          
+      issues: write                 
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: release-please
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # --------------------------------------------------------------------------
+  publish:
+    name: publish
+    needs: [build-and-test, sast, supply-chain, release]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write               
+      id-token: write               
+      attestations: write           
+
+    steps:
+      - name: Download the release candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: release-candidate
+
+      - name: Load the scanned image
+        run: gunzip -c release-candidate/image.tar.gz | docker load
+
+      - name: Image name
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and push
+        id: push
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          RELEASE_CREATED: ${{ needs.release.outputs.release_created }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          sha_tag="sha-${GITHUB_SHA::7}"
+          docker tag devopslab-api:ci "$IMAGE:$sha_tag"
+          docker push "$IMAGE:$sha_tag"
+
+          # A release adds a SemVer tag to the SAME image: same digest.
+          if [ "$RELEASE_CREATED" = "true" ]; then
+            docker tag devopslab-api:ci "$IMAGE:$VERSION"
+            docker push "$IMAGE:$VERSION"
+          fi
+
+          ref="$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$sha_tag")"
+          digest="${ref#*@}"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Published"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Image | \`$IMAGE\` |"
+            echo "| Tags | $sha_tag |"
+            echo "| **Digest** | \`$digest\` |"
+            echo "| Commit | \`$GITHUB_SHA\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ steps.name.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest SBOM
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ steps.name.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: release-candidate/devopslab-api.cdx.json
+          push-to-registry: true
+          create-storage-record: false
